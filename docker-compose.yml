@@ -1,0 +1,16 @@
+version: "3"
+services:
+  this_jupyter:
+    build: docker
+    command: start-notebook.sh --NotebookApp.token="forhydrogen"
+    ports:
+      - "10000:8888"
+    volumes:
+      - .:/home/jovyan
+  this_mlflow:
+    build: docker
+    command: mlflow server --host 0.0.0.0
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./home/jovyan
