@@ -1,34 +1,33 @@
-from src.operations import create_stream_writer, transform_bronze, transform_raw
-from src.utility import (
-    generate_paths,
-    generate_schemas,
-    generate_spark_session,
-    load_delta_table,
-    read_stream_json,
-    until_stream_is_ready,
-)
+from shutil import rmtree
+from pipelines.config import paths, schemas
+from pipelines.operations import create_batch_writer, transform_bronze, transform_raw
+from pipelines.utility import generate_spark_session, load_table
 
 if __name__ == "__main__":
     spark = generate_spark_session()
-    test_raw = generate_paths(env, "test_raw")
-    test_bronze = generate_paths(env, "test_bronze")
-    test_silver = generate_paths(env, "test_silver")
 
-    raw_schema = generate_schema("raw_schema")
+    rmtree(paths.test_bronze, ignore_errors=True)
+    rmtree(paths.test_silver, ignore_errors=True)
 
-    bronze_path = generate_paths(env, "bronze")
+    raw_df = load_table(spark, format="text", path=paths.test_raw, schema=schemas.raw)
 
-    raw_df = read_stream_json(spark, test_raw, raw_schema)
-
-    stream_name = "write_raw_to_bronze"
     transformed_raw_df = transform_raw(spark, raw_df)
-    raw_to_bronze_writer = create_stream_writer(
-        dataframe=transformed_raw_df,
-        path=bronze_path,
-        checkpoint=bronze_checkpoint,
-        name=stream_name,
-        partition_column="p_ingestdate",
-    )
-    raw_to_bronze_writer.start()
 
-    until_stream_is_ready(spark, stream_name)
+    raw_to_bronze_json_writer = create_batch_writer(
+        dataframe=transformed_raw_df,
+        path=paths.test_bronze,
+        partition_column="p_ingestdate",
+        format="json",
+    )
+    raw_to_bronze_json_writer.save()
+
+    bronze_df = transformed_raw_df
+    transformed_bronze_df = transform_bronze(spark, bronze_df)
+
+    bronze_to_silver_json_writer = create_batch_writer(
+        dataframe=transformed_bronze_df,
+        path=paths.test_silver,
+        partition_column="p_eventdate",
+        format="json",
+    )
+    bronze_to_silver_json_writer.save()

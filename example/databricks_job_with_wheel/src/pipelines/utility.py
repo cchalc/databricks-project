@@ -31,14 +31,23 @@ def initialize_delta_table(
     writer.save(path)
 
 
-def load_delta_table(spark: SparkSession, path: str, alias: str = None) -> DataFrame:
+def load_table(
+    spark: SparkSession,
+    format: str,
+    path: str,
+    alias: str = None,
+    schema: StructType = None,
+) -> DataFrame:
+    df = spark.read.format(format).option("path", path)
+    if schema is not None:
+        df = df.schema(schema)
     if alias is not None:
-        return spark.read.format("delta").load(path).alias(alias)
-    return spark.read.format("delta").load(path)
+        df = df.alias(alias)
+    return spark.read.format(format).load(path)
 
 
 def read_stream_delta(
-    spark: SparkSession, deltaPath: str, alias: str = None
+    spark: SparkSession, deltaPath: str, alias: str = "stream"
 ) -> DataFrame:
     return spark.readStream.format("delta").load(deltaPath).alias(alias)
 

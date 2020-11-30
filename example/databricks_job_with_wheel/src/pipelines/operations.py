@@ -1,3 +1,4 @@
+from typing import List
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
     col,
@@ -15,7 +16,24 @@ from pyspark.sql.session import SparkSession
 from pyspark.sql.streaming import DataStreamWriter
 from pyspark.sql.window import Window
 
-from pipelines.utility import load_delta_table
+from pipelines.utility import load_table
+
+
+def create_batch_writer(
+    dataframe: DataFrame,
+    path: str,
+    partition_column: str,
+    exclude_columns: List = [],
+    mode: str = "append",
+    format: str = "delta",
+) -> DataFrame:
+    return (
+        dataframe.drop(*exclude_columns)
+        .write.format(format)
+        .mode(mode)
+        .option("path", path)
+        .partitionBy(partition_column)
+    )
 
 
 def create_stream_writer(
@@ -25,11 +43,12 @@ def create_stream_writer(
     name: str,
     partition_column: str,
     mode: str = "append",
+    format: str = "delta",
     mergeSchema: bool = False,
 ) -> DataStreamWriter:
 
     stream_writer = (
-        dataframe.writeStream.format("delta")
+        dataframe.writeStream.format(format)
         .outputMode(mode)
         .option("path", path)
         .option("checkpointLocation", checkpoint)
@@ -59,7 +78,7 @@ def prepare_interpolation_dataframe(
 def update_silver_table(spark: SparkSession, silverPath: str) -> bool:
     from delta.tables import DeltaTable
 
-    silverDF = load_delta_table(spark, silverPath)
+    silverDF = load_table(spark, format="delta", path=silverPath)
     silverTable = DeltaTable.forPath(spark, silverPath)
 
     update_match = """
