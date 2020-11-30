@@ -7,17 +7,20 @@ from pyspark.sql.functions import (
     lag,
     lead,
     lit,
+    max,
     mean,
     stddev,
-    max,
 )
 from pyspark.sql.session import SparkSession
 from pyspark.sql.streaming import DataStreamWriter
 from pyspark.sql.window import Window
 
+from pipelines.utility import load_delta_table
+
 
 def create_stream_writer(
     dataframe: DataFrame,
+    path: str,
     checkpoint: str,
     name: str,
     partition_column: str,
@@ -28,6 +31,7 @@ def create_stream_writer(
     stream_writer = (
         dataframe.writeStream.format("delta")
         .outputMode(mode)
+        .option("path", path)
         .option("checkpointLocation", checkpoint)
         .partitionBy(partition_column)
         .queryName(name)
@@ -40,8 +44,23 @@ def create_stream_writer(
     return stream_writer
 
 
+def prepare_interpolation_dataframe(
+    spark: SparkSession, silverDF: DataFrame
+) -> DataFrame:
+    dateWindow = Window.orderBy("p_eventdate")
+
+    return silverDF.select(
+        "*",
+        lag(col("heartrate")).over(dateWindow).alias("prev_amt"),
+        lead(col("heartrate")).over(dateWindow).alias("next_amt"),
+    )
+
+
 def update_silver_table(spark: SparkSession, silverPath: str) -> bool:
     from delta.tables import DeltaTable
+
+    silverDF = load_delta_table(spark, silverPath)
+    silverTable = DeltaTable.forPath(spark, silverPath)
 
     update_match = """
     health_tracker.eventtime = updates.eventtime
@@ -51,13 +70,7 @@ def update_silver_table(spark: SparkSession, silverPath: str) -> bool:
 
     update = {"heartrate": "updates.heartrate"}
 
-    dateWindow = Window.orderBy("p_eventdate")
-
-    interpolatedDF = spark.read.table("health_tracker_plus_silver").select(
-        "*",
-        lag(col("heartrate")).over(dateWindow).alias("prev_amt"),
-        lead(col("heartrate")).over(dateWindow).alias("next_amt"),
-    )
+    interpolatedDF = prepare_interpolation_dataframe(spark, silverDF)
 
     updatesDF = interpolatedDF.where(col("heartrate") < 0).select(
         "device_id",
@@ -66,8 +79,6 @@ def update_silver_table(spark: SparkSession, silverPath: str) -> bool:
         "name",
         "p_eventdate",
     )
-
-    silverTable = DeltaTable.forPath(spark, silverPath)
 
     (
         silverTable.alias("health_tracker")
