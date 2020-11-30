@@ -6,3 +6,6 @@
 **/.local
 **/.pytest_cache
 **/__pycache__
+**/tests/data/bronze
+**/tests/data/silver
+**/tests/data/checkpoints
