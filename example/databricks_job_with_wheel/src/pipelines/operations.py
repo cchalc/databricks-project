@@ -92,32 +92,6 @@ def prepare_interpolated_updates_dataframe(
     )
 
 
-def update_silver_table(spark: SparkSession, silverPath: str) -> bool:
-    from delta.tables import DeltaTable
-
-    silver_df = load_dataframe(spark, format="delta", path=silverPath)
-    silverTable = DeltaTable.forPath(spark, silverPath)
-
-    update_match = """
-    health_tracker.eventtime = updates.eventtime
-    AND
-    health_tracker.device_id = updates.device_id
-    """
-
-    update = {"heartrate": "updates.heartrate"}
-
-    updates_df = prepare_interpolated_updates_dataframe(spark, silver_df)
-
-    (
-        silverTable.alias("health_tracker")
-        .merge(updates_df.alias("updates"), update_match)
-        .whenMatchedUpdate(set=update)
-        .execute()
-    )
-
-    return True
-
-
 def transform_bronze(spark: SparkSession, bronze: DataFrame) -> DataFrame:
 
     json_schema = """
@@ -151,9 +125,27 @@ def transform_raw(spark: SparkSession, raw: DataFrame) -> DataFrame:
     )
 
 
-def transform_silver_mean_agg(silver: DataFrame) -> DataFrame:
-    return silver.groupBy("device_id").agg(
-        mean(col("heartrate")).alias("mean_heartrate"),
-        stddev(col("heartrate")).alias("std_heartrate"),
-        max(col("heartrate")).alias("max_heartrate"),
+def update_silver_table(spark: SparkSession, silverPath: str) -> bool:
+    from delta.tables import DeltaTable
+
+    silver_df = load_dataframe(spark, format="delta", path=silverPath)
+    silverTable = DeltaTable.forPath(spark, silverPath)
+
+    update_match = """
+    health_tracker.eventtime = updates.eventtime
+    AND
+    health_tracker.device_id = updates.device_id
+    """
+
+    update = {"heartrate": "updates.heartrate"}
+
+    updates_df = prepare_interpolated_updates_dataframe(spark, silver_df)
+
+    (
+        silverTable.alias("health_tracker")
+        .merge(updates_df.alias("updates"), update_match)
+        .whenMatchedUpdate(set=update)
+        .execute()
     )
+
+    return True

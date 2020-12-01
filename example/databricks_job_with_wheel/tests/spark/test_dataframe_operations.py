@@ -1,6 +1,7 @@
 import pytest
 from shutil import rmtree
 from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.functions import col
 
 from pipelines.config import paths, schemas
 from pipelines.operations import (
@@ -8,6 +9,7 @@ from pipelines.operations import (
     transform_bronze,
     transform_raw,
     prepare_interpolated_updates_dataframe,
+    update_silver_table,
 )
 from pipelines.utility import (
     load_dataframe,
@@ -15,7 +17,7 @@ from pipelines.utility import (
 )
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def silver_df(spark: SparkSession) -> DataFrame:
     stream_name = "create_silver"
     silver_json_df = load_dataframe(
@@ -64,3 +66,8 @@ class TestSparkDataframeOperations:
 
         updates_df = prepare_interpolated_updates_dataframe(spark, silver_df)
         assert updates_df.count() == 75
+
+    def test_update_silver_table(self, spark, silver_df):
+        assert silver_df.where(col("heartrate") < 0).count() == 75
+        update_silver_table(spark, paths.silver)
+        assert silver_df.where(col("heartrate") < 0).count() == 0
