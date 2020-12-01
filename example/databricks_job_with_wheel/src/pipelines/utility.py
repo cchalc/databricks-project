@@ -1,7 +1,5 @@
 import os
 import time
-from shutil import rmtree
-from pandas import DataFrame as pdDataFrame
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.types import StructType
 

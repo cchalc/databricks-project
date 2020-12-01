@@ -8,9 +8,6 @@ from pyspark.sql.functions import (
     lag,
     lead,
     lit,
-    max,
-    mean,
-    stddev,
     when,
 )
 from pyspark.sql.session import SparkSession

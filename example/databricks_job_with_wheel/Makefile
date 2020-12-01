@@ -12,3 +12,6 @@ run-test: launch-test-server clean-pyc
 
 run-tests: launch-test-server clean-pyc
 		docker-compose exec spark_testing pytest -s
+
+wheel:
+		python src/setup.py bdist_wheel
