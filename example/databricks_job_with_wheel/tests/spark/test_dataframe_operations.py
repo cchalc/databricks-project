@@ -3,7 +3,12 @@ from shutil import rmtree
 from pyspark.sql import DataFrame, SparkSession
 
 from pipelines.config import paths, schemas
-from pipelines.operations import create_stream_writer, transform_bronze, transform_raw
+from pipelines.operations import (
+    create_stream_writer,
+    transform_bronze,
+    transform_raw,
+    prepare_interpolated_updates_dataframe,
+)
 from pipelines.utility import (
     load_dataframe,
     until_stream_is_ready,
@@ -55,6 +60,7 @@ class TestSparkDataframeOperations:
         transformed_bronze_df = transform_bronze(spark, test_bronze_df)
         assert transformed_bronze_df.schema == schemas.silver
 
-    def test_prepare_interpolation_dataframe(self, spark, silver_df):
-        # TODO: write tests
-        assert False
+    def test_prepare_interpolated_updates_dataframe(self, spark, silver_df):
+
+        updates_df = prepare_interpolated_updates_dataframe(spark, silver_df)
+        assert updates_df.count() == 75

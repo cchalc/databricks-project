@@ -6,14 +6,6 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.types import StructType
 
 
-def clear_path(path: str) -> bool:
-    try:
-        rmtree(path)
-        return True
-    except FileNotFoundError:
-        return False
-
-
 def generate_spark_session() -> SparkSession:
     pyspark_submit_args = '--packages "io.delta:delta-core_2.12:0.7.0" '
     pyspark_submit_args += "pyspark-shell"
@@ -50,10 +42,6 @@ def load_dataframe(
     if alias is not None:
         df = df.alias(alias)
     return df.load()
-
-
-def spark_display(df: DataFrame, n: int = 10) -> pdDataFrame:
-    return df.limit(n).toPandas()
 
 
 def until_stream_is_ready(

@@ -11,6 +11,7 @@ from pyspark.sql.functions import (
     max,
     mean,
     stddev,
+    when,
 )
 from pyspark.sql.session import SparkSession
 from pyspark.sql.streaming import DataStreamWriter
@@ -63,22 +64,38 @@ def create_stream_writer(
     return stream_writer
 
 
-def prepare_interpolation_dataframe(
-    spark: SparkSession, silverDF: DataFrame
+def prepare_interpolated_updates_dataframe(
+    spark: SparkSession, silver_df: DataFrame
 ) -> DataFrame:
-    dateWindow = Window.orderBy("p_eventdate")
+    dateWindow = Window.partitionBy("device_id").orderBy("p_eventdate")
 
-    return silverDF.select(
+    lag_lead_silver_df = silver_df.select(
         "*",
         lag(col("heartrate")).over(dateWindow).alias("prev_amt"),
         lead(col("heartrate")).over(dateWindow).alias("next_amt"),
+    )
+    updates = lag_lead_silver_df.where(col("heartrate") < 0)
+    updates = updates.withColumn(
+        "heartrate",
+        when(col("prev_amt").isNull(), col("next_amt")).otherwise(
+            when(col("next_amt").isNull(), col("prev_amt")).otherwise(
+                (col("prev_amt") + col("next_amt")) / 2
+            )
+        ),
+    )
+    return updates.select(
+        "device_id",
+        "heartrate",
+        "eventtime",
+        "name",
+        "p_eventdate",
     )
 
 
 def update_silver_table(spark: SparkSession, silverPath: str) -> bool:
     from delta.tables import DeltaTable
 
-    silverDF = load_dataframe(spark, format="delta", path=silverPath)
+    silver_df = load_dataframe(spark, format="delta", path=silverPath)
     silverTable = DeltaTable.forPath(spark, silverPath)
 
     update_match = """
@@ -89,19 +106,11 @@ def update_silver_table(spark: SparkSession, silverPath: str) -> bool:
 
     update = {"heartrate": "updates.heartrate"}
 
-    interpolatedDF = prepare_interpolation_dataframe(spark, silverDF)
-
-    updatesDF = interpolatedDF.where(col("heartrate") < 0).select(
-        "device_id",
-        ((col("prev_amt") + col("next_amt")) / 2).alias("heartrate"),
-        "eventtime",
-        "name",
-        "p_eventdate",
-    )
+    updates_df = prepare_interpolated_updates_dataframe(spark, silver_df)
 
     (
         silverTable.alias("health_tracker")
-        .merge(updatesDF.alias("updates"), update_match)
+        .merge(updates_df.alias("updates"), update_match)
         .whenMatchedUpdate(set=update)
         .execute()
     )
