@@ -16,7 +16,7 @@ from pyspark.sql.session import SparkSession
 from pyspark.sql.streaming import DataStreamWriter
 from pyspark.sql.window import Window
 
-from pipelines.utility import load_table
+from pipelines.utility import load_dataframe
 
 
 def create_batch_writer(
@@ -78,7 +78,7 @@ def prepare_interpolation_dataframe(
 def update_silver_table(spark: SparkSession, silverPath: str) -> bool:
     from delta.tables import DeltaTable
 
-    silverDF = load_table(spark, format="delta", path=silverPath)
+    silverDF = load_dataframe(spark, format="delta", path=silverPath)
     silverTable = DeltaTable.forPath(spark, silverPath)
 
     update_match = """

@@ -1,7 +1,7 @@
 from shutil import rmtree
 from pipelines.config import paths, schemas
 from pipelines.operations import create_batch_writer, transform_bronze, transform_raw
-from pipelines.utility import generate_spark_session, load_table
+from pipelines.utility import generate_spark_session, load_dataframe
 
 if __name__ == "__main__":
     spark = generate_spark_session()
@@ -9,7 +9,7 @@ if __name__ == "__main__":
     rmtree(paths.test_bronze, ignore_errors=True)
     rmtree(paths.test_silver, ignore_errors=True)
 
-    raw_df = load_table(spark, format="text", path=paths.test_raw, schema=schemas.raw)
+    raw_df = load_dataframe(spark, format="text", path=paths.test_raw, schema=schemas.raw)
 
     transformed_raw_df = transform_raw(spark, raw_df)
 

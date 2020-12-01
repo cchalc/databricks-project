@@ -22,38 +22,34 @@ def generate_spark_session() -> SparkSession:
 
 
 def initialize_delta_table(
-    spark: SparkSession, path: str, schema: str, partitionBy: str = ""
+    spark: SparkSession, path: str, schema: StructType, partitionBy: str = None
 ):
     df = spark.createDataFrame([], schema)
-    writer = df.write.format("delta")
-    if partitionBy != "":
+    writer = df.write.format("delta").option("path", path)
+    if partitionBy is not None:
         writer = writer.partitionBy(partitionBy)
-    writer.save(path)
+    writer.save()
 
 
-def load_table(
+def load_dataframe(
     spark: SparkSession,
     format: str,
     path: str,
     alias: str = None,
     schema: StructType = None,
+    streaming: bool = False,
 ) -> DataFrame:
-    df = spark.read.format(format).option("path", path)
+    if streaming:
+        spark_reader = spark.readStream
+    else:
+        spark_reader = spark.read
+
+    df = spark_reader.format(format).option("path", path)
     if schema is not None:
         df = df.schema(schema)
     if alias is not None:
         df = df.alias(alias)
-    return spark.read.format(format).load(path)
-
-
-def read_stream_delta(
-    spark: SparkSession, deltaPath: str, alias: str = "stream"
-) -> DataFrame:
-    return spark.readStream.format("delta").load(deltaPath).alias(alias)
-
-
-def read_stream_json(spark: SparkSession, path: str, schema: StructType) -> DataFrame:
-    return spark.readStream.format("json").schema(schema).load(path)
+    return df.load()
 
 
 def spark_display(df: DataFrame, n: int = 10) -> pdDataFrame:
