@@ -9,7 +9,9 @@ if __name__ == "__main__":
     rmtree(paths.test_bronze, ignore_errors=True)
     rmtree(paths.test_silver, ignore_errors=True)
 
-    raw_df = load_dataframe(spark, format="text", path=paths.test_raw, schema=schemas.raw)
+    raw_df = load_dataframe(
+        spark, format="text", path=paths.test_raw, schema=schemas.raw
+    )
 
     transformed_raw_df = transform_raw(spark, raw_df)
 

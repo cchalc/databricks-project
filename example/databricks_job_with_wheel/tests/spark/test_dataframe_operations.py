@@ -1,6 +1,3 @@
-import pytest
-from shutil import rmtree
-from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col
 
 from pipelines.config import paths, schemas
@@ -11,40 +8,11 @@ from pipelines.operations import (
     prepare_interpolated_updates_dataframe,
     update_silver_table,
 )
-from pipelines.utility import (
-    load_dataframe,
-    until_stream_is_ready,
-)
-
-
-@pytest.fixture(scope="module")
-def silver_df(spark: SparkSession) -> DataFrame:
-    stream_name = "create_silver"
-    silver_json_df = load_dataframe(
-        spark,
-        format="json",
-        path=paths.test_silver,
-        schema=schemas.silver,
-        streaming=True,
-    )
-    (
-        silver_json_df.writeStream.format("delta")
-        .partitionBy("p_eventdate")
-        .outputMode("append")
-        .option("checkpointLocation", paths.silver_checkpoint)
-        .option("path", paths.silver)
-        .queryName(stream_name)
-        .start()
-    )
-    until_stream_is_ready(spark, stream_name)
-    yield load_dataframe(spark, format="delta", path=paths.silver)
-    rmtree(paths.silver)
-    rmtree(paths.silver_checkpoint)
 
 
 class TestSparkDataframeOperations:
-    def test_create_stream_writer(self, spark, test_raw_df):
-        transformed_raw_df = transform_raw(spark, test_raw_df)
+    def test_create_stream_writer(self, spark, loaded_raw_df):
+        transformed_raw_df = transform_raw(spark, loaded_raw_df)
         raw_to_bronze_writer = create_stream_writer(
             dataframe=transformed_raw_df,
             path=paths.bronze,
@@ -54,20 +22,49 @@ class TestSparkDataframeOperations:
         )
         assert raw_to_bronze_writer._df.schema == schemas.bronze
 
-    def test_transform_raw(self, spark, test_raw_df):
-        transformed_raw_df = transform_raw(spark, test_raw_df)
-        assert transformed_raw_df.schema == schemas.bronze
+    def test_transform_raw(self, spark, sample_raw_df, sample_bronze_df):
 
-    def test_transform_bronze(self, spark, test_bronze_df):
-        transformed_bronze_df = transform_bronze(spark, test_bronze_df)
-        assert transformed_bronze_df.schema == schemas.silver
+        transformed_raw_df = transform_raw(spark, sample_raw_df)
 
-    def test_prepare_interpolated_updates_dataframe(self, spark, silver_df):
+        assert (
+            transformed_raw_df.drop("ingesttime")
+            .intersect(sample_bronze_df.drop("ingesttime"))
+            .count()
+            == transformed_raw_df.count()
+        ) and (
+            sample_bronze_df.drop("ingesttime")
+            .intersect(transformed_raw_df.drop("ingesttime"))
+            .count()
+            == sample_bronze_df.count()
+        )
 
-        updates_df = prepare_interpolated_updates_dataframe(spark, silver_df)
-        assert updates_df.count() == 75
+    def test_transform_bronze(self, spark, sample_bronze_df, sample_silver_1_df):
 
-    def test_update_silver_table(self, spark, silver_df):
-        assert silver_df.where(col("heartrate") < 0).count() == 75
+        transformed_bronze_df = transform_bronze(spark, sample_bronze_df)
+
+        assert (
+            transformed_bronze_df.intersect(sample_silver_1_df).count()
+            == transformed_bronze_df.count()
+        ) and (
+            sample_silver_1_df.intersect(transformed_bronze_df).count()
+            == sample_silver_1_df.count()
+        )
+
+    def test_prepare_interpolated_updates_dataframe(self, spark, sample_silver_2_df):
+
+        updates_df = prepare_interpolated_updates_dataframe(spark, sample_silver_2_df)
+        assert updates_df.count() == 1
+        assert updates_df.select("heartrate").collect().pop().heartrate == 61.9946573478
+
+    def test_prepare_interpolated_updates_dataframe_boundary_case(
+        self, spark, sample_silver_1_df
+    ):
+
+        updates_df = prepare_interpolated_updates_dataframe(spark, sample_silver_1_df)
+        assert updates_df.count() == 1
+        assert updates_df.select("heartrate").collect().pop().heartrate == 61.3702019913
+
+    def test_update_silver_table(self, spark, full_silver_df):
+        assert full_silver_df.where(col("heartrate") < 0).count() == 75
         update_silver_table(spark, paths.silver)
-        assert silver_df.where(col("heartrate") < 0).count() == 0
+        assert full_silver_df.where(col("heartrate") < 0).count() == 0
