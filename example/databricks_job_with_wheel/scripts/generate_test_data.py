@@ -1,3 +1,4 @@
+# Databricks notebook source
 from shutil import rmtree
 from pipelines.config import paths, schemas
 from pipelines.operations import create_batch_writer, transform_bronze, transform_raw
